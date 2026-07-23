@@ -1,0 +1,36 @@
+# Java / Maven
+likes-service/target/
+*.class
+*.jar
+*.war
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Node / React
+demo-webapp/frontend/node_modules/
+demo-webapp/frontend/dist/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Postgres data
+*.sql.bak
+
+# Temp test configs
+/tmp/

@@ -1,0 +1,15 @@
+server:
+  port: 8081
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/likesdb
+    username: user
+    password: pass
+  sql:
+    init:
+      mode: always
+  jackson:
+    property-naming-strategy: SNAKE_CASE
+
+peers: []
