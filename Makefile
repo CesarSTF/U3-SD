@@ -34,6 +34,9 @@ PG_USER          ?= user
 PG_PASS          ?= pass
 PG_DB            ?= likesdb
 JAR              = likes-service/target/likes-service-1.0.0.jar
+VENV             = .venv
+PYTHON           = $(VENV)/bin/python3
+PIP              = $(VENV)/bin/pip
 
 # ─────────────────────────────────────────────
 # AYUDA
@@ -72,10 +75,13 @@ help:
 # INSTALACIÓN — COORDINADOR (máquina 1)
 # ─────────────────────────────────────────────
 install-coordinador:
-	@echo "══ Instalando dependencias del coordinador ══"
-	pip install -r balanceador-coordinador/requirements.txt
-	pip install -r cliente/requirements.txt
-	pip install -r demo-webapp/backend/requirements.txt
+	@echo "══ Creando entorno virtual Python ══"
+	python3 -m venv $(VENV)
+	@echo ""
+	@echo "══ Instalando dependencias Python ══"
+	$(PIP) install -r balanceador-coordinador/requirements.txt
+	$(PIP) install -r cliente/requirements.txt
+	$(PIP) install -r demo-webapp/backend/requirements.txt
 	@echo ""
 	@echo "══ Instalando dependencias del frontend ══"
 	cd demo-webapp/frontend && npm install
@@ -83,7 +89,7 @@ install-coordinador:
 	@echo "══ Compilando likes-service (para pruebas locales) ══"
 	cd likes-service && mvn clean package -DskipTests
 	@echo ""
-	@echo "✓ Coordinador listo."
+	@echo "✓ Coordinador listo. Python usa: $(PYTHON)"
 
 # ─────────────────────────────────────────────
 # INSTALACIÓN — NODO (máquinas 2, 3, 4)
@@ -130,7 +136,7 @@ build-nodo:
 # ─────────────────────────────────────────────
 run-coordinador:
 	@echo "══ Levantando balanceador-coordinador en :$(BALANCEADOR_PORT) ══"
-	cd balanceador-coordinador && python3 main.py
+	cd balanceador-coordinador && ../$(PYTHON) main.py
 
 # ─────────────────────────────────────────────
 # CORRER — NODOS (cada máquina corre UNO de estos)
@@ -158,14 +164,14 @@ run-nodo-3:
 # ─────────────────────────────────────────────
 run-cliente:
 	@echo "══ Corriendo generador de tráfico ══"
-	cd cliente && python3 main.py
+	cd cliente && ../$(PYTHON) main.py
 
 # ─────────────────────────────────────────────
 # CORRER — DEMO WEBAPP
 # ─────────────────────────────────────────────
 run-demo-backend:
 	@echo "══ Levantando demo backend en :8000 ══"
-	cd demo-webapp/backend && python3 main.py
+	cd demo-webapp/backend && ../../$(PYTHON) main.py
 
 run-demo-frontend:
 	@echo "══ Levantando demo frontend (Vite dev server) ══"
@@ -204,5 +210,6 @@ clean:
 	@echo "══ Limpiando artefactos de build ══"
 	cd likes-service && mvn clean 2>/dev/null || true
 	rm -rf demo-webapp/frontend/node_modules demo-webapp/frontend/dist
+	rm -rf $(VENV)
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	@echo "✓ Limpio."
