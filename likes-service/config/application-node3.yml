@@ -1,7 +1,9 @@
+# node-3 = nodo2 (192.168.0.103)
+# Sus peers son node-1 (cesar05) y node-2 (master)
 peers:
   - id: node-1
-    host: 192.168.1.101
+    host: 192.168.0.107
     port: 8081
   - id: node-2
-    host: 192.168.1.102
+    host: 192.168.0.102
     port: 8081
