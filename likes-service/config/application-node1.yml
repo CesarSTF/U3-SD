@@ -2,7 +2,7 @@
 # Sus peers son node-2 (cesar05) y node-3 (nodo2)
 peers:
   - id: node-2
-    host: 192.168.0.7
+    host: 192.168.0.107
     port: 8081
   - id: node-3
     host: 192.168.0.103

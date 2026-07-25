@@ -270,7 +270,7 @@ async def post_like(req: LikeRequest):
                     else:
                         log.info(f"like_id={req.like_id} post_id={req.post_id} — {node_id} falló con status {resp.status_code}")
                 except Exception as exc:
-                    log.info(f"like_id={req.like_id} post_id={req.post_id} — {node_id} falló por excepción: {exc}")
+                    log.info(f"like_id={req.like_id} post_id={req.post_id} — {node_id} falló por excepción: {type(exc).__name__}: {exc!r}")
 
         # Dejar las tareas pendientes corriendo en segundo plano (no cancelar)
         for task in pending:
@@ -323,7 +323,7 @@ async def get_likes(post_id: str):
     for i, r in enumerate(results):
         node_id = targets[i].id
         if isinstance(r, Exception):
-            log.info(f"post_id={post_id} (lectura) — {node_id} falló por excepción: {r}")
+            log.info(f"post_id={post_id} (lectura) — {node_id} falló por excepción: {type(r).__name__}: {r!r}")
             continue
         if hasattr(r, "status_code") and r.status_code == 200:
             data = r.json()
