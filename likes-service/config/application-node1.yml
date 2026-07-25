@@ -1,5 +1,5 @@
-# node-1 = cesar05 (192.168.0.107)
-# Sus peers son node-2 (master) y node-3 (nodo2)
+# node-1 = master (192.168.0.104)
+# Sus peers son node-2 (cesar05) y node-3 (nodo2)
 peers:
   - id: node-2
     host: 192.168.0.102
