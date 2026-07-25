@@ -2,8 +2,8 @@ target:
   base_url: "http://192.168.0.101:8080"
 
 load:
-  concurrent_clients: 50
-  duration_s: 60
+  concurrent_clients: 3
+  duration_s: 30
   write_ratio: 0.8
   post_ids: ["post-1", "post-2", "post-3"]
 

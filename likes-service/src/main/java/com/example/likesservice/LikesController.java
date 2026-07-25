@@ -3,6 +3,8 @@ package com.example.likesservice;
 import java.util.List;
 import java.util.Map;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -17,6 +19,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class LikesController {
 
+    private static final Logger log = LoggerFactory.getLogger(LikesController.class);
+
     private final LikesRepository repo;
 
     public LikesController(LikesRepository repo) {
@@ -30,6 +34,7 @@ public class LikesController {
     @GetMapping("/health")
     public Map<String, Object> health() {
         long seq = repo.getMaxSeq();
+        log.debug("health() — devolviendo seq global = {}", seq);
         return Map.of("seq", seq);
     }
 
@@ -45,11 +50,13 @@ public class LikesController {
         if (newSeq == null) {
             // Conflicto — likeId repetido, no-op idempotente
             long existingSeq = repo.getSeqForExisting(req.postId(), req.likeId());
+            log.info("write() — no-op por idempotencia (conflicto) para postId={} likeId={} (seq={})", req.postId(), req.likeId(), existingSeq);
             return Map.of("ok", true, "seq", existingSeq);
         }
 
         // Like nuevo — incrementar contador
         repo.upsertLikeCount(req.postId());
+        log.info("write() — nueva escritura para postId={} likeId={} (seq={})", req.postId(), req.likeId(), newSeq);
         return Map.of("ok", true, "seq", newSeq);
     }
 
@@ -61,6 +68,7 @@ public class LikesController {
     public Map<String, Object> read(@RequestParam("post_id") String postId) {
         int count = repo.getCount(postId);
         long seq = repo.getMaxSeqForPost(postId);
+        log.info("read() — postId={} devuelto con count={} seq={}", postId, count, seq);
         return Map.of("count", count, "seq", seq);
     }
 

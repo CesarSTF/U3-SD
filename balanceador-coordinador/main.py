@@ -223,23 +223,34 @@ class LikeRequest(BaseModel):
 
 @app.post("/like")
 async def post_like(req: LikeRequest):
+    active_ids = [n.id for n in nodes if n.circuit == Circuit.CLOSED]
+    log.info(f"like_id={req.like_id} post_id={req.post_id} — nodos activos: {active_ids}")
+    
     ordered = get_ordered_active()
+    log.info(f"like_id={req.like_id} post_id={req.post_id} — orden round robin: {[n.id for n in ordered]}")
+    
     if len(ordered) < W:
+        log.warning(f"like_id={req.like_id} post_id={req.post_id} — No hay cuórum de escritura disponible ({len(ordered)}/{W})")
         from fastapi.responses import JSONResponse
         return JSONResponse(
             status_code=503,
             content={"error": "no hay cuorum de escritura disponible"},
         )
 
+    log.info(f"like_id={req.like_id} post_id={req.post_id} — disparando fan-out a: {[f'{n.host}:{n.port}' for n in ordered]}")
+
     # Fan-out paralelo a todos los activos, cortar apenas se junten W confirmaciones
     async with httpx.AsyncClient(timeout=WRITE_TIMEOUT) as client:
-        pending = {
-            asyncio.ensure_future(
+        task_to_node = {}
+        for node in ordered:
+            task = asyncio.ensure_future(
                 client.post(f"{node.base_url}/write", json={"post_id": req.post_id, "like_id": req.like_id})
             )
-            for node in ordered
-        }
+            task_to_node[task] = node.id
+            
+        pending = set(task_to_node.keys())
         confirmations = []
+        confirmed_nodes = []
         deadline = time.time() + WRITE_TIMEOUT
 
         while pending and len(confirmations) < W:
@@ -248,12 +259,18 @@ async def post_like(req: LikeRequest):
                 break
             done, pending = await asyncio.wait(pending, timeout=remaining, return_when=asyncio.FIRST_COMPLETED)
             for task in done:
+                node_id = task_to_node[task]
                 try:
                     resp = task.result()
                     if resp.status_code == 200:
-                        confirmations.append(resp.json())
-                except Exception:
-                    pass
+                        data = resp.json()
+                        confirmations.append(data)
+                        confirmed_nodes.append(node_id)
+                        log.info(f"like_id={req.like_id} post_id={req.post_id} — {node_id} respondió OK (seq={data.get('seq')})")
+                    else:
+                        log.info(f"like_id={req.like_id} post_id={req.post_id} — {node_id} falló con status {resp.status_code}")
+                except Exception as exc:
+                    log.info(f"like_id={req.like_id} post_id={req.post_id} — {node_id} falló por excepción: {exc}")
 
         # Dejar las tareas pendientes corriendo en segundo plano (no cancelar)
         for task in pending:
@@ -261,8 +278,11 @@ async def post_like(req: LikeRequest):
 
     if len(confirmations) >= W:
         best = max(confirmations, key=lambda c: c.get("seq", 0))
+        pending_nodes = [task_to_node[t] for t in pending]
+        log.info(f"like_id={req.like_id} post_id={req.post_id} — Alcanzado W={W}. Confirmaron: {confirmed_nodes}. Quedaron pendientes/tarde: {pending_nodes}")
         return {"ok": True, "seq": best["seq"]}
     else:
+        log.warning(f"like_id={req.like_id} post_id={req.post_id} — No se alcanzó cuórum a tiempo. Confirmaciones: {len(confirmations)}/{W}")
         from fastapi.responses import JSONResponse
         return JSONResponse(
             status_code=503,
@@ -275,8 +295,14 @@ async def post_like(req: LikeRequest):
 
 @app.get("/likes/{post_id}")
 async def get_likes(post_id: str):
+    active_ids = [n.id for n in nodes if n.circuit == Circuit.CLOSED]
+    log.info(f"post_id={post_id} (lectura) — nodos activos: {active_ids}")
+    
     ordered = get_ordered_active()
+    log.info(f"post_id={post_id} (lectura) — orden round robin: {[n.id for n in ordered]}")
+    
     if len(ordered) < R:
+        log.warning(f"post_id={post_id} (lectura) — No hay cuórum de lectura disponible ({len(ordered)}/{R})")
         from fastapi.responses import JSONResponse
         return JSONResponse(
             status_code=503,
@@ -285,6 +311,7 @@ async def get_likes(post_id: str):
 
     # Enviar a los primeros R nodos de ordered
     targets = ordered[:R]
+    log.info(f"post_id={post_id} (lectura) — consultando a: {[f'{n.host}:{n.port}' for n in targets]}")
     async with httpx.AsyncClient(timeout=READ_TIMEOUT) as client:
         tasks = [
             client.get(f"{node.base_url}/read", params={"post_id": post_id})
@@ -293,13 +320,20 @@ async def get_likes(post_id: str):
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
     responses = []
-    for r in results:
+    for i, r in enumerate(results):
+        node_id = targets[i].id
         if isinstance(r, Exception):
+            log.info(f"post_id={post_id} (lectura) — {node_id} falló por excepción: {r}")
             continue
         if hasattr(r, "status_code") and r.status_code == 200:
-            responses.append(r.json())
+            data = r.json()
+            responses.append({"data": data, "node_id": node_id})
+            log.info(f"post_id={post_id} (lectura) — {node_id} respondió OK (seq={data.get('seq')}, count={data.get('count')})")
+        else:
+            log.info(f"post_id={post_id} (lectura) — {node_id} falló con status {getattr(r, 'status_code', 'unknown')}")
 
     if len(responses) < R:
+        log.warning(f"post_id={post_id} (lectura) — No se alcanzó cuórum de lectura a tiempo. Respondieron: {len(responses)}/{R}")
         from fastapi.responses import JSONResponse
         return JSONResponse(
             status_code=503,
@@ -307,7 +341,10 @@ async def get_likes(post_id: str):
         )
 
     # La respuesta más fresca (mayor seq para este post_id)
-    best = max(responses, key=lambda r: r.get("seq", 0))
+    best_resp = max(responses, key=lambda r: r["data"].get("seq", 0))
+    best_node = best_resp["node_id"]
+    best = best_resp["data"]
+    log.info(f"post_id={post_id} (lectura) — Más fresco elegido de {best_node} (seq={best['seq']}, count={best['count']})")
     return {"count": best["count"], "seq": best["seq"]}
 
 # ---------------------------------------------------------------------------

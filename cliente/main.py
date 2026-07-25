@@ -116,6 +116,7 @@ async def worker(client: httpx.AsyncClient, end_time: float, worker_id: int):
                 await log_result(ts, "read", post_id, 0, elapsed, str(exc)[:100])
 
         ops += 1
+        await asyncio.sleep(0.5)  # <-- Pausa de medio segundo para ver mejor el flujo
 
     log.info("Worker %d terminó (%d operaciones).", worker_id, ops)
 

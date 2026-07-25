@@ -26,8 +26,9 @@ demo-webapp/frontend/dist/
 .DS_Store
 Thumbs.db
 
-# Logs
+# Logs y Resultados de Carga
 *.log
+*.csv
 
 # Postgres data
 *.sql.bak

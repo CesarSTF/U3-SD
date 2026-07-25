@@ -26,7 +26,7 @@ log = logging.getLogger("demo-backend")
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-BALANCEADOR_URL = os.getenv("BALANCEADOR_URL", "http://192.168.1.100:8080")
+BALANCEADOR_URL = os.getenv("BALANCEADOR_URL", "http://localhost:8080")
 
 # ---------------------------------------------------------------------------
 # Posts fijos en memoria (spec-demo-webapp §1)
