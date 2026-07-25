@@ -1,8 +1,8 @@
-# node-2 = cesar05 (192.168.0.102)
-# Sus peers son node-1 (cesar-Thin) y node-3 (nodo2)
+# node-2 = master (192.168.0.102)
+# Sus peers son node-1 (cesar05) y node-3 (nodo2)
 peers:
   - id: node-1
-    host: 192.168.0.101
+    host: 192.168.0.107
     port: 8081
   - id: node-3
     host: 192.168.0.103
