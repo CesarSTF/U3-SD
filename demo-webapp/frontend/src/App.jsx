@@ -6,7 +6,6 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
 const POLL_INTERVAL = 2000
 const ROUTE_ANIM_MS = 700
 const NODE_ANIM_MS = 900
-const SIMULATE_DOWN_MS = 8000
 const MAX_HISTORY = 60
 
 function getInitialTheme() {
@@ -31,11 +30,10 @@ function App() {
   const [route, setRoute] = useState(null) // { nodeId, key }
   const rrIndexRef = useRef(0)
 
-  // --- Circuit breaker: latencia de sondeo, animaciones, caídas y simulación local ---
+  // --- Circuit breaker: latencia de sondeo, animaciones y caídas ---
   const [pollLatency, setPollLatency] = useState(null)
   const [nodeAnim, setNodeAnim] = useState({})
   const [downCounts, setDownCounts] = useState({})
-  const [simulatedDown, setSimulatedDown] = useState({})
   const prevEffectiveRef = useRef({})
   const nodeAnimTimersRef = useRef({})
 
@@ -122,24 +120,22 @@ function App() {
     return () => clearTimeout(timeout)
   }, [route])
 
-  // --- Detecta transiciones de estado (reales o simuladas) para toasts + animación + contador de caídas ---
+  // --- Detecta transiciones de estado para toasts + animación + contador de caídas ---
   useEffect(() => {
     const nodes = clusterStatus?.nodes || []
     if (nodes.length === 0) return
 
     nodes.forEach(node => {
-      const simulated = !!simulatedDown[node.id]
-      const effective = simulated ? 'OPEN' : node.circuit
+      const effective = node.circuit
       const prev = prevEffectiveRef.current[node.id]
 
       if (prev !== undefined && prev !== effective) {
-        const tag = simulated ? ' (simulado)' : ''
         if (effective === 'OPEN') {
-          addToast(`⚠️ ${node.id} cayó${tag}`, 'error')
+          addToast(`⚠️ ${node.id} cayó`, 'error')
           setDownCounts(p => ({ ...p, [node.id]: (p[node.id] || 0) + 1 }))
           triggerNodeAnim(node.id, 'down')
         } else if (effective === 'CLOSED') {
-          addToast(`✅ ${node.id} se recuperó${tag}`, 'success')
+          addToast(`✅ ${node.id} se recuperó`, 'success')
           triggerNodeAnim(node.id, 'up')
         } else if (effective === 'HALF_OPEN') {
           addToast(`🔄 ${node.id} verificando reconexión`, 'info')
@@ -149,7 +145,7 @@ function App() {
       prevEffectiveRef.current[node.id] = effective
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clusterStatus, simulatedDown])
+  }, [clusterStatus])
 
   const triggerNodeAnim = (nodeId, cls) => {
     setNodeAnim(prev => ({ ...prev, [nodeId]: cls }))
@@ -172,26 +168,10 @@ function App() {
     }, 3000)
   }
 
-  // --- Simular caída de un nodo (solo visual, en el frontend) ---
-  const handleSimulateDown = (nodeId) => {
-    if (simulatedDown[nodeId]) return
-    setSimulatedDown(prev => ({ ...prev, [nodeId]: true }))
-    setTimeout(() => {
-      setSimulatedDown(prev => {
-        const next = { ...prev }
-        delete next[nodeId]
-        return next
-      })
-    }, SIMULATE_DOWN_MS)
-  }
-
-  // --- Circuito efectivo (real, salvo que esté simulado como caído) ---
-  const getEffectiveCircuit = (node) => (simulatedDown[node.id] ? 'OPEN' : node.circuit)
-
   // --- Elige el siguiente nodo elegible por round robin (mismo criterio que el balanceador real: omite nodos con el circuito abierto) ---
   const pickNextNode = () => {
     const nodes = clusterStatus?.nodes || []
-    const eligible = nodes.filter(n => getEffectiveCircuit(n) === 'CLOSED')
+    const eligible = nodes.filter(n => n.circuit === 'CLOSED')
     if (eligible.length === 0) return null
     const idx = rrIndexRef.current % eligible.length
     rrIndexRef.current += 1
@@ -257,7 +237,7 @@ function App() {
   }
 
   const nodes = clusterStatus?.nodes || []
-  const eligibleCount = nodes.filter(n => getEffectiveCircuit(n) === 'CLOSED').length
+  const eligibleCount = nodes.filter(n => n.circuit === 'CLOSED').length
 
   return (
     <div className="app-container">
@@ -353,11 +333,10 @@ function App() {
                 </div>
                 <div className="lb-rows">
                   {nodes.map(node => {
-                    const effective = getEffectiveCircuit(node)
                     return (
                       <div
                         key={node.id}
-                        className={`lb-row ${getLbRowClass(effective)} ${route?.nodeId === node.id ? 'routing' : ''}`}
+                        className={`lb-row ${getLbRowClass(node.circuit)} ${route?.nodeId === node.id ? 'routing' : ''}`}
                       >
                         <div className="lb-track">
                           {route?.nodeId === node.id && <span className="lb-dot" key={route.key}></span>}
@@ -365,8 +344,8 @@ function App() {
                         <div className="lb-node">
                           <div className="lb-node-info">
                             <span className="lb-node-name">{node.id}</span>
-                            <span className={`lb-node-tag ${getLbRowClass(effective)}`}>
-                              {getLbTagLabel(effective)}
+                            <span className={`lb-node-tag ${getLbRowClass(node.circuit)}`}>
+                              {getLbTagLabel(node.circuit)}
                             </span>
                           </div>
                           <span className="lb-node-count">
@@ -404,8 +383,6 @@ function App() {
             {nodes.length > 0 ? (
               <div className="node-list">
                 {nodes.map(node => {
-                  const effective = getEffectiveCircuit(node)
-                  const simulated = !!simulatedDown[node.id]
                   const anim = nodeAnim[node.id]
                   return (
                     <div
@@ -415,35 +392,26 @@ function App() {
                     >
                       <div className="cb-node-header">
                         <div className="cb-node-name">
-                          <div className={`node-status-dot ${getCircuitClass(effective)}`}></div>
+                          <div className={`node-status-dot ${getCircuitClass(node.circuit)}`}></div>
                           {node.id}
-                          {simulated && <span className="sim-badge">simulado</span>}
                         </div>
                         <div className="cb-node-seq">seq: {node.seq}</div>
                       </div>
                       <div className="cb-stepper">
-                        <div className={`cb-step ${getCircuitClass(effective) === 'closed' ? 'active closed' : ''}`}>
+                        <div className={`cb-step ${getCircuitClass(node.circuit) === 'closed' ? 'active closed' : ''}`}>
                           Activo
                         </div>
                         <span className="cb-arrow">→</span>
-                        <div className={`cb-step ${getCircuitClass(effective) === 'open' ? 'active open' : ''}`}>
+                        <div className={`cb-step ${getCircuitClass(node.circuit) === 'open' ? 'active open' : ''}`}>
                           Caído
                         </div>
                         <span className="cb-arrow">→</span>
-                        <div className={`cb-step ${getCircuitClass(effective) === 'half_open' ? 'active half_open' : ''}`}>
+                        <div className={`cb-step ${getCircuitClass(node.circuit) === 'half_open' ? 'active half_open' : ''}`}>
                           Verificando
                         </div>
                       </div>
                       <div className="cb-node-footer">
                         <span className="down-count-chip">Caídas: {downCounts[node.id] || 0}</span>
-                        <button
-                          className="simulate-btn"
-                          disabled={simulated}
-                          onClick={() => handleSimulateDown(node.id)}
-                          title="Simulación visual local: no afecta al balanceador ni a los nodos reales"
-                        >
-                          {simulated ? 'Simulando caída…' : 'Simular caída'}
-                        </button>
                       </div>
                     </div>
                   )
